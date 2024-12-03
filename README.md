@@ -1,141 +1,175 @@
-# Azure IMDS Authentication Component for ColdFusion
+# ims.cfc - Azure Instance Metadata Service (IMS) Component
 
-This ColdFusion component provides a simple interface to obtain an access token from Azure's Instance Metadata Service (IMDS). It enables applications running on Azure Virtual Machines or App Services to authenticate securely without the need for hardcoded credentials.
+## Overview
 
-## Table of Contents
+`ims.cfc` is a ColdFusion component designed to interact with Azure's Instance Metadata Service (IMS) to obtain access tokens for Azure resources secured by Azure Active Directory (AAD). This component is particularly useful when running applications on Azure Virtual Machines (VMs) or other services that support Managed Identities, allowing your application to authenticate to Azure services without embedding credentials in your code.
 
-- [Introduction](#introduction)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Initialization](#initialization)
-  - [Authentication](#authentication)
-- [Properties](#properties)
-- [Methods](#methods)
-- [Example](#example)
-- [License](#license)
+## Features
 
-## Introduction
+- **Easy Authentication**: Simplifies the process of obtaining access tokens using Azure Managed Identities.
+- **Configurable**: Allows customization of API version and target resource.
+- **Integration Ready**: Can be easily integrated into existing ColdFusion applications running in Azure environments.
 
-Azure's Instance Metadata Service (IMDS) provides information about currently running virtual machine instances and allows applications to securely obtain access tokens for Azure resources. This component abstracts the process of constructing the appropriate requests to IMDS and parsing the responses.
+## Requirements
 
-## Prerequisites
-
-- ColdFusion 2016 or later
-- An application running on an Azure Virtual Machine or App Service with Managed Identity enabled
-- Network access to the IMDS endpoint (`169.254.169.254`)
+- **Adobe ColdFusion or Lucee**: Compatible with ColdFusion servers capable of running CFC components.
+- **Azure Environment**: Must be running within an Azure service that supports Managed Identities (e.g., Azure VMs, Azure App Service).
+- **Network Access**: The application must have network access to Azure's Instance Metadata Service (`http://169.254.169.254`).
 
 ## Installation
 
-1. **Download the Component**
+1. **Download the `ims.cfc` File**: Place the `ims.cfc` file into your application's components directory (e.g., `components/` or `cfc/`).
 
-   Save the component code into a file named `AzureIMDS.cfc`.
-
-2. **Include in Your Project**
-
-   Place the `AzureIMDS.cfc` file in your project's directory or in a location accessible to your application.
+2. **Verify Azure Configuration**:
+   - Ensure that Managed Identity is enabled for your Azure service.
+   - Assign necessary permissions to the Managed Identity for accessing Azure resources (e.g., Key Vault, Azure Storage).
 
 ## Usage
 
 ### Initialization
 
-Create an instance of the component and initialize it with optional dynamic properties.
+Instantiate the `ims.cfc` component in your application. You can optionally pass a struct of dynamic properties to override the default settings.
 
 ```coldfusion
-imdsAuth = new AzureIMDS();
+<!--- Default Initialization --->
+<cfset ims = new ims()>
+
+<!--- Custom Initialization --->
+<cfset ims = new ims({
+    "api-version" = "2019-08-01",
+    "resource"    = "https://management.azure.com/"
+})>
 ```
 
-You can also pass a struct of dynamic properties to override the defaults:
+### Obtaining an Access Token
+
+Use the `Auth()` method to retrieve an access token.
 
 ```coldfusion
-imdsAuth = new AzureIMDS({
-    "api-version": "2020-06-01",
-    "resource": "https://management.azure.com/"
-});
+<!--- Get Access Token --->
+<cfset tokenResponse = ims.Auth()>
+
+<!--- Extract Token Details --->
+<cfset accessToken = tokenResponse.access_token>
+<cfset expiresIn   = tokenResponse.expires_in>
+<cfset tokenType   = tokenResponse.token_type>
 ```
 
-### Authentication
+### Using the Access Token
 
-Call the `Auth()` method to obtain an access token.
+Include the access token in the `Authorization` header when making requests to Azure services.
 
 ```coldfusion
-accessTokenResponse = imdsAuth.Auth();
-```
+<cfhttp url="https://myresource.azure.net/api/data" method="GET">
+    <cfhttpparam type="header" name="Authorization" value="Bearer #accessToken#">
+</cfhttp>
 
-The `Auth()` method returns a struct containing the access token and other related information.
+<!--- Handle Response --->
+<cfoutput>#cfhttp.fileContent#</cfoutput>
+```
 
 ## Properties
 
-- **api-version** (`string`)
+The component includes the following properties, which can be set during initialization or via setters:
 
-  - **Default**: `"2018-02-01"`
-  - **Description**: The API version to use when making requests to the IMDS.
+| Property       | Type     | Default Value                 | Description                                                     |
+|----------------|----------|-------------------------------|-----------------------------------------------------------------|
+| `api-version`  | `string` | `"2018-02-01"`                | Specifies the IMS API version to use.                           |
+| `resource`     | `string` | `"https://vault.azure.net/"`  | The Azure resource URI for which to obtain the access token.    |
+| `imsEndpoint`  | `string` | *Constructed internally*      | The IMS endpoint URL. Typically does not need to be set manually.|
 
-- **resource** (`string`)
+### Property Details
 
-  - **Default**: `"https://vault.azure.net/"`
-  - **Description**: The Azure resource URI for which the access token is requested.
-
-- **imsEndpoint** (`string`)
-
-  - **Description**: The full endpoint URL of the IMDS. This is constructed during initialization and typically does not need to be set manually.
+- **`api-version`**: The version of the IMS API to interact with. Update this if you need features from a newer API version.
+- **`resource`**: The target resource URI for which the access token is requested (e.g., Azure Key Vault, Azure Management API).
+- **`imsEndpoint`**: Automatically constructed based on the `api-version` and `resource`. Overrides are not usually necessary.
 
 ## Methods
 
 ### `init(struct dynamicProperties = {})`
 
-Initializes the component with optional dynamic properties.
+Initializes the component and sets properties.
 
 - **Parameters**:
-  - `dynamicProperties` (`struct`, optional): A struct of properties to override the defaults.
+  - `dynamicProperties` (optional): A struct containing property names and values to override defaults.
+- **Returns**: The component instance (`this`).
 
-- **Returns**: The initialized component instance.
+**Example**:
+
+```coldfusion
+<cfset ims = new ims({
+    "api-version" = "2019-08-01",
+    "resource"    = "https://management.azure.com/"
+})>
+```
 
 ### `Auth()`
 
-Sends a request to the IMDS to obtain an access token.
+Fetches an access token from the Azure Instance Metadata Service.
 
-- **Returns**: A struct containing the access token and associated metadata.
+- **Parameters**: None.
+- **Returns**: A struct containing token information (`access_token`, `expires_in`, `token_type`).
 
-## Example
+**Example**:
 
 ```coldfusion
-<cfscript>
-// Create an instance of the IMDS Authentication component
-imdsAuth = new AzureIMDS();
-
-// Optionally, initialize with custom properties
-imdsAuth.init({
-    "api-version": "2020-06-01",
-    "resource": "https://management.azure.com/"
-});
-
-// Obtain the access token
-accessTokenResponse = imdsAuth.Auth();
-
-// Extract the access token
-accessToken = accessTokenResponse.access_token;
-
-// Use the access token in subsequent API calls
-httpService = new Http(
-    url = "https://management.azure.com/subscriptions?api-version=2020-01-01",
-    method = "GET"
-);
-httpService.addParam(
-    type = "header",
-    name = "Authorization",
-    value = "Bearer " & accessToken
-);
-apiResponse = httpService.send().getPrefix();
-
-// Process the API response
-if (structKeyExists(apiResponse, "fileContent") && IsJSON(apiResponse.fileContent)) {
-    apiData = DeserializeJSON(apiResponse.fileContent);
-    // Work with the API data
-}
-</cfscript>
+<cfset tokenResponse = ims.Auth()>
 ```
+
+## Examples
+
+### Accessing Azure Key Vault
+
+```coldfusion
+<!--- Initialize ims.cfc for Key Vault --->
+<cfset ims = new ims({
+    "resource" = "https://vault.azure.net/"
+})>
+
+<!--- Obtain Access Token --->
+<cfset tokenResponse = ims.Auth()>
+<cfset accessToken   = tokenResponse.access_token>
+
+<!--- Access a Secret from Key Vault --->
+<cfhttp url="https://mykeyvault.vault.azure.net/secrets/mySecret?api-version=7.0" method="GET">
+    <cfhttpparam type="header" name="Authorization" value="Bearer #accessToken#">
+</cfhttp>
+
+<!--- Output Secret Value --->
+<cfoutput>#cfhttp.fileContent#</cfoutput>
+```
+
+### Listing Azure Resource Groups
+
+```coldfusion
+<!--- Initialize ims.cfc for Azure Management API --->
+<cfset ims = new ims({
+    "resource" = "https://management.azure.com/"
+})>
+
+<!--- Obtain Access Token --->
+<cfset tokenResponse = ims.Auth()>
+<cfset accessToken   = tokenResponse.access_token>
+
+<!--- List Resource Groups --->
+<cfhttp url="https://management.azure.com/subscriptions/{subscription-id}/resourcegroups?api-version=2020-06-01" method="GET">
+    <cfhttpparam type="header" name="Authorization" value="Bearer #accessToken#">
+</cfhttp>
+
+<!--- Output Resource Groups --->
+<cfoutput>#cfhttp.fileContent#</cfoutput>
+```
+
+## Troubleshooting
+
+- **Connection Issues**: Ensure your application is running in an Azure environment with network access to `http://169.254.169.254`.
+- **Authentication Errors**: Verify that the Managed Identity has the necessary permissions for the target resource.
+- **Incorrect API Version**: Update the `api-version` property if you encounter compatibility issues.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+---
+
+Feel free to contribute to this project by submitting issues or pull requests.
